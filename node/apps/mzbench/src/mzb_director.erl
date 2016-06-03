@@ -68,7 +68,7 @@ init([SuperPid, BenchName, Script, Nodes, Env, Continuation]) ->
     {Pools, Env2} = mzbl_script:extract_pools_and_env(Script, Env),
     system_log:info("[ director ] Pools: ~p, Env: ~p", [Pools, Env2]),
 
-    TimeOffsets = [{N, mzb_time:get_time_offset(N)} || N <- mzb_interconnect:nodes()],
+    TimeOffsets = [{N, mzb_time:get_time_offset(N,1)} || N <- mzb_interconnect:nodes()],
 
     system_log:info("Server offsets: ~p", [TimeOffsets]),
 

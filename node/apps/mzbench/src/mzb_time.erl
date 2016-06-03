@@ -4,7 +4,7 @@
          timestamp/0,
          get_offset/0,
          update_time_offset/0,
-         get_time_offset/1]).
+         get_time_offset/2]).
 
 -behaviour(gen_server).
 -export([init/1,
@@ -51,7 +51,7 @@ init([]) ->
 
 -spec handle_call(term(), {pid(), term()}, #state{}) -> term().
 handle_call(update_time_offset, _From, State) ->
-    {Offset, _} = get_time_offset(mzb_interconnect:get_director()),
+    {Offset, _} = get_time_offset(mzb_interconnect:get_director(), 200),
     _ = ets:update_element(?MODULE, offset, {2, Offset}),
     {reply, ok, State};
 handle_call(Req, _From, State) ->
@@ -80,7 +80,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-get_time_offset(Node) ->
+get_time_offset(Node, SleepInterval) ->
     {Offset, RoundTripTime} = lists:foldl(
         fun (_Attempt, {CurOffset, MinRTT}) ->
             LocalTimestamp1 = os:timestamp(),
@@ -90,7 +90,7 @@ get_time_offset(Node) ->
             RTT = timer:now_diff(LocalTimestamp2, LocalTimestamp1),
             Offset = timer:now_diff(DirectorTimestamp, LocalTimestamp1) - RTT div 2,
             system_log:info("Time reconciliation between ~p and ~p, round: ~p, result: ~b(~b)", [node(), Node, _Attempt, Offset, RTT]),
-            timer:sleep(200),
+            timer:sleep(SleepInterval),
             case RTT < MinRTT of
                 true -> {Offset, RTT};
                 false -> {CurOffset, MinRTT}
