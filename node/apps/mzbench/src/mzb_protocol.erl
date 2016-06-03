@@ -41,6 +41,12 @@ handle({add_signal, Name, Count}) ->
 handle(is_director_alive) ->
     mzb_director:is_alive();
 
+handle(update_time_offset) ->
+    mzb_time:update_time_offset();
+
+handle(get_local_timestamp) ->
+    os:timestamp();
+
 handle(Unhandled) ->
     system_log:error("Unhandled node message: ~p", [Unhandled]),
     erlang:error({unknown_message, Unhandled}).

@@ -9,6 +9,8 @@
 
 -include_lib("mzbench_language/include/mzbl_types.hrl").
 
+-define(MICROSEC_IN_SEC, 1000000).
+
 provision_nodes(Config, Logger) ->
     #{
         provision_nodes := ProvisionNodes,
@@ -23,8 +25,7 @@ provision_nodes(Config, Logger) ->
     RootDir = mzb_api_bench:remote_path("", Config),
     ok = ensure_dir(UserName, UniqHosts, RootDir, Logger),
 
-    CheckResult = (catch ntp_check(UserName, UniqHosts, Logger)),
-    Logger(info, "NTP check result: ~p", [CheckResult]),
+    TimeDifferences = ntp_check(UserName, UniqHosts, Logger),
 
     NodeDeployPath = mzb_api_paths:node_deployment_path(),
 
@@ -44,7 +45,7 @@ provision_nodes(Config, Logger) ->
     DirectorNode = nodename(director_sname(Config), 0),
     WorkerNodes = [nodename(worker_sname(Config), N) || N <- lists:seq(1, length(WorkerHosts))],
     Nodes = [DirectorNode | WorkerNodes],
-    ensure_vm_args([DirectorHost|WorkerHosts], Nodes, Config, Logger),
+    ensure_vm_args([DirectorHost|WorkerHosts], Nodes, Config, TimeDifferences, Logger),
     _ = mzb_subprocess:remote_cmd(
         UserName,
         [DirectorHost|WorkerHosts],
@@ -81,29 +82,44 @@ clean_nodes(Config, Logger) ->
     length(RootDir) > 1 andalso mzb_subprocess:remote_cmd(UserName, [DirectorHost|WorkerHosts], io_lib:format("rm -rf ~s", [RootDir]), [], Logger),
     ok.
 
-ntp_check(_, [_], Logger) ->
+ntp_check(_, [H], Logger) ->
     Logger(info, "There's only one host, no need to make ntp check", []),
-    ok;
+    [{H, 0}];
 ntp_check(UserName, Hosts, Logger) ->
-    Offsets = lists:map(fun(X) ->
+    MaxTimeDiff = application:get_env(mzbench_api, ntp_max_timediff_s, undefined),
+    try lists:map(fun(X) ->
         Logger(info, "ntpdate response: ~p", [X]),
         [_, T | _] = lists:reverse(string:tokens(X, " \n")),
-        {F, []} = string:to_float(T), F end,
-        mzb_subprocess:remote_cmd(UserName, Hosts, "ntpdate -q pool.ntp.org", [], Logger)),
-    TimeDiff = lists:max(Offsets) - lists:min(Offsets),
-    Logger(info, "NTP time diffs are: ~p, max distance is ~p", [Offsets, TimeDiff]),
-    case TimeDiff < application:get_env(mzbench_api, ntp_max_timediff, 0.1) of
-        true -> ok;
-        _ -> erlang:error({ntp_check_failed, TimeDiff})
+        {F, []} = string:to_float(T), erlang:round(?MICROSEC_IN_SEC*F) end,
+        mzb_subprocess:remote_cmd(UserName, Hosts, "ntpdate -q pool.ntp.org", [], Logger)) of
+        Offsets ->
+            TimeDiff = lists:max(Offsets) - lists:min(Offsets),
+            Logger(info, "NTP time diffs are: ~p, max distance is ~p microsecond", [Offsets, TimeDiff]),
+            case MaxTimeDiff of
+                undefined -> ok;
+                _  when ?MICROSEC_IN_SEC * MaxTimeDiff >= TimeDiff -> ok;
+                _ ->
+                    Logger(error, "NTP CHECK FAILED, max time different is ~p microseconds", [TimeDiff]),
+                    erlang:error({ntp_check_failed, TimeDiff})
+            end,
+            lists:zip(Hosts, Offsets)
+    catch
+        _:Error when MaxTimeDiff == undefined ->
+            Logger(error, "NTP check crashed: ~p~n~p", [Error, erlang:get_stacktrace()]),
+            [{H, undefined} || H <- Hosts];
+        _:Error ->
+            Logger(error, "NTP check crashed: ~p~n~p", [Error, erlang:get_stacktrace()]),
+            erlang:error({ntp_call_crashed, Error})
     end.
 
 nodename(Name, N) ->
     erlang:list_to_atom(mzb_string:format("~s_~b@127.0.0.1", [Name, N])).
 
-ensure_vm_args(Hosts, Nodenames, Config, Logger) ->
+ensure_vm_args(Hosts, Nodenames, Config, TimeDifferences, Logger) ->
     _ = mzb_lists:pmap(
         fun ({H, N}) ->
-            ensure_file_content([H], vm_args_content(N, Config), "vm.args", Config, Logger)
+            TimeOffset = proplists:get_value(H, TimeDifferences),
+            ensure_file_content([H], vm_args_content(N, TimeOffset, Config), "vm.args", Config, Logger)
         end, lists:zip(Hosts, Nodenames)),
     ok.
 
@@ -148,14 +164,15 @@ ensure_dir(User, Hosts, Dir, Logger) ->
 director_sname(#{id:= Id}) -> "mzb_director" ++ integer_to_list(Id).
 worker_sname(#{id:= Id})   -> "mzb_worker" ++ integer_to_list(Id).
 
-vm_args_content(NodeName, #{node_log_port:= LogPort, node_management_port:= Port,
+vm_args_content(NodeName, TimeOffset, #{node_log_port:= LogPort, node_management_port:= Port,
     vm_args:= ConfigArgs, node_log_user_port:= LogUserPort} = Config) ->
     UpdateIntervalMs = mzb_bc:maps_get(metric_update_interval_ms, Config, undefined),
     NewArgs =
         [mzb_string:format("-name ~s", [NodeName]),
          mzb_string:format("-mzbench node_management_port ~b", [Port]),
          mzb_string:format("-mzbench node_log_port ~b", [LogPort]),
-         mzb_string:format("-mzbench node_log_user_port ~b", [LogUserPort])] ++ 
+         mzb_string:format("-mzbench node_log_user_port ~b", [LogUserPort])] ++
+        [mzb_string:format("-mzbench node_time_offset ~b", [TimeOffset]) || TimeOffset /= undefined] ++
         [mzb_string:format("-mzbench metric_update_interval_ms ~b", [UpdateIntervalMs]) || UpdateIntervalMs /= undefined],
 
     io_lib:format(string:join([A ++ "~n" || A <- NewArgs ++ ConfigArgs], ""), []).

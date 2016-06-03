@@ -3,8 +3,7 @@
 -export([start_link/0,
          timestamp/0,
          get_offset/0,
-         synchronize_time_with_director/1, 
-         get_local_timestamp/0]).
+         update_time_offset/0]).
 
 -behaviour(gen_server).
 -export([init/1,
@@ -36,13 +35,9 @@ get_offset() ->
         _ -> 0
     end.
 
--spec synchronize_time_with_director(string()) -> ok.
-synchronize_time_with_director(DirectorNode) ->
-    gen_server:cast(?MODULE, {synchronize_time_with_director, DirectorNode}).
-
--spec get_local_timestamp() -> {ok, {non_neg_integer(), non_neg_integer(), non_neg_integer()}}.
-get_local_timestamp() ->
-    {ok, os:timestamp()}.
+-spec update_time_offset() -> ok.
+update_time_offset() ->
+    gen_server:call(?MODULE, update_time_offset).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -54,22 +49,31 @@ init([]) ->
     {ok, #state{}}.
 
 -spec handle_call(term(), {pid(), term()}, #state{}) -> term().
+handle_call(update_time_offset, _From, State) ->
+    {Offset, RoundTripTime} = lists:foldl(
+        fun (_Attempt, {CurOffset, MinRTT}) ->
+            LocalTimestamp1 = os:timestamp(),
+            DirectorTimestamp = mzb_interconnect:call_director(get_local_timestamp),
+            LocalTimestamp2 = os:timestamp(),
+
+            RTT = timer:now_diff(LocalTimestamp2, LocalTimestamp1),
+            Offset = timer:now_diff(DirectorTimestamp, LocalTimestamp1) + RTT div 2,
+            system_log:info("Time reconciliation at ~p, round: ~p, result: ~b(~b)", [node(), _Attempt, Offset, RTT]),
+            timer:sleep(200),
+            case RTT < MinRTT of
+                true -> {Offset, RTT};
+                false -> {CurOffset, MinRTT}
+            end
+        end, {undefined, undefined}, lists:seq(1, 10)),
+
+    system_log:info("[ mzb_time ] Timestamp offset between the node ~p and the director is ~p microseconds / error: ~p", [erlang:node(), Offset, RoundTripTime div 2]),
+    _ = ets:update_element(?MODULE, offset, {2, Offset}),
+    {reply, ok, State};
 handle_call(Req, _From, State) ->
     system_log:error("Unhandled call: ~p", [Req]),
     {stop, {unhandled_call, Req}, State}.
 
 -spec handle_cast(term(), #state{}) -> term().
-handle_cast({synchronize_time_with_director, DirectorNode}, State) ->
-    LocalTimestamp1 = os:timestamp(),
-    {ok, DirectorTimestamp} = rpc:call(DirectorNode, mzb_time, get_local_timestamp, []),
-    LocalTimestamp2 = os:timestamp(),
-    
-    RTT = timer:now_diff(LocalTimestamp2, LocalTimestamp1),
-    Offset = timer:now_diff(DirectorTimestamp, LocalTimestamp1) + RTT/2,
-    
-    system_log:info("[ mzb_time ] Timestamp offset between the node ~p and the director is ~p microseconds", [erlang:node(), Offset]),
-    _ = ets:update_element(?MODULE, offset, {2, Offset}),
-    {noreply, State};
 handle_cast(Msg, State) ->
     system_log:error("Unhandled cast: ~p", [Msg]),
     {stop, {unhandled_cast, Msg}, State}.
