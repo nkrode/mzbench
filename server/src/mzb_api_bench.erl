@@ -282,7 +282,7 @@ handle_stage(pipeline, pre_hooks, #{cluster_connection:= Connection, config:= Co
 handle_stage(pipeline, starting, #{cluster_connection:= Connection, config:= Config}) ->
     #{script:= Script, env:= Env} = Config,
     ScriptFilePath = script_path(Script),
-    ok = director_call(Connection, {start_benchmark, remote_path(ScriptFilePath, Config), Env}),
+    ok = director_call(Connection, {start_benchmark, remote_path(ScriptFilePath, Config), Env}, 300000),
     ok;
 
 handle_stage(pipeline, running, #{cluster_connection:= Connection} = State) ->
