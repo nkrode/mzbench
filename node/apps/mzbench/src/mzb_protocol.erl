@@ -48,7 +48,8 @@ handle(update_time_offset, ReplyFun) ->
     noreply;
 
 handle(get_local_timestamp, _) ->
-    {reply, os:timestamp()};
+    {N1, N2, N3} = os:timestamp(),
+    {reply, {N1, N2 + 1, N3}};
 
 handle(Unhandled, _) ->
     system_log:error("Unhandled node message: ~p", [Unhandled]),
