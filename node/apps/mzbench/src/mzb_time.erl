@@ -57,7 +57,7 @@ handle_call(update_time_offset, _From, State) ->
             LocalTimestamp2 = os:timestamp(),
 
             RTT = timer:now_diff(LocalTimestamp2, LocalTimestamp1),
-            Offset = timer:now_diff(DirectorTimestamp, LocalTimestamp1) + RTT div 2,
+            Offset = timer:now_diff(DirectorTimestamp, LocalTimestamp1) - RTT div 2,
             system_log:info("Time reconciliation at ~p, round: ~p, result: ~b(~b)", [node(), _Attempt, Offset, RTT]),
             timer:sleep(200),
             case RTT < MinRTT of
