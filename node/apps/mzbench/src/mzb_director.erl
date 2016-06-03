@@ -67,6 +67,11 @@ init([SuperPid, BenchName, Script, Nodes, Env, Continuation]) ->
     system_log:info("[ director ] Bench name ~p, director node ~p", [BenchName, erlang:node()]),
     {Pools, Env2} = mzbl_script:extract_pools_and_env(Script, Env),
     system_log:info("[ director ] Pools: ~p, Env: ~p", [Pools, Env2]),
+
+    TimeOffsets = [{N, mzb_time:get_time_offset(N)} || N <- mzb_interconnect:nodes()],
+
+    system_log:info("Server offsets: ~p", [TimeOffsets]),
+
     {_, []} = mzb_interconnect:multi_call(Nodes, update_time_offset),
     {_, []} = mzb_interconnect:multi_call(Nodes, {set_signaler_nodes, Nodes}),
     gen_server:cast(self(), start_pools),
