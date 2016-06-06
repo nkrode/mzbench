@@ -41,9 +41,9 @@ handle({add_signal, Name, Count}, _) ->
 handle(is_director_alive, _) ->
     {reply, mzb_director:is_alive()};
 
-handle(update_time_offset, ReplyFun) ->
+handle({update_time_offset, Offsets}, ReplyFun) ->
     _ = spawn(fun () ->
-        ReplyFun(mzb_time:update_time_offset())
+        ReplyFun(mzb_time:update_time_offset(Offsets))
     end),
     noreply;
 

@@ -3,7 +3,7 @@
 -export([start_link/0,
          timestamp/0,
          get_offset/0,
-         update_time_offset/0,
+         update_time_offset/1,
          get_time_offset/2]).
 
 -behaviour(gen_server).
@@ -36,9 +36,9 @@ get_offset() ->
         _ -> 0
     end.
 
--spec update_time_offset() -> ok.
-update_time_offset() ->
-    gen_server:call(?MODULE, update_time_offset).
+-spec update_time_offset([{Node :: atom(), Offset :: integer()}]) -> ok.
+update_time_offset(Offsets) ->
+    gen_server:call(?MODULE, {update_time_offset, Offsets}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -50,7 +50,7 @@ init([]) ->
     {ok, #state{}}.
 
 -spec handle_call(term(), {pid(), term()}, #state{}) -> term().
-handle_call(update_time_offset, _From, State) ->
+handle_call({update_time_offset, Offsets}, _From, State) ->
     {Offset, _} = get_time_offset(mzb_interconnect:get_director(), 200),
     _ = ets:update_element(?MODULE, offset, {2, Offset}),
     {reply, ok, State};

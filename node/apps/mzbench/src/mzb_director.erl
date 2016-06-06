@@ -68,11 +68,14 @@ init([SuperPid, BenchName, Script, Nodes, Env, Continuation]) ->
     {Pools, Env2} = mzbl_script:extract_pools_and_env(Script, Env),
     system_log:info("[ director ] Pools: ~p, Env: ~p", [Pools, Env2]),
 
-    TimeOffsets = [{N, mzb_time:get_time_offset(N,1)} || N <- mzb_interconnect:nodes()],
+    TimeOffsets = mzb_lists:pmap(
+        fun (N) ->
+            {N, mzb_time:get_time_offset(N,1)}
+        end, mzb_interconnect:nodes()),
 
-    system_log:info("Server offsets: ~p", [TimeOffsets]),
+    system_log:info("Server time offsets: ~p", [TimeOffsets]),
 
-    {_, []} = mzb_interconnect:multi_call(Nodes, update_time_offset),
+    {_, []} = mzb_interconnect:multi_call(Nodes, {update_time_offset, TimeOffsets}),
     {_, []} = mzb_interconnect:multi_call(Nodes, {set_signaler_nodes, Nodes}),
     gen_server:cast(self(), start_pools),
     _ = mzb_lists:pmap(fun(Node) ->
