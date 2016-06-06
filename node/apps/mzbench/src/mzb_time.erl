@@ -14,6 +14,8 @@
          terminate/2,
          code_change/3]).
 
+-compile({inline,[get_offset/0]}).
+
 -record(state, {
 }).
 
@@ -27,7 +29,7 @@ start_link() ->
 -spec timestamp() -> {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
 timestamp() ->
     {MegaSecs, Secs, MicroSecs} = os:timestamp(),
-    {MegaSecs, Secs, erlang:trunc(MicroSecs + get_offset())}.
+    {MegaSecs, Secs, MicroSecs + get_offset()}.
 
 -spec get_offset() -> integer().
 get_offset() ->
@@ -55,9 +57,16 @@ init([]) ->
 
 -spec handle_call(term(), {pid(), term()}, #state{}) -> term().
 handle_call({update_time_offset, ServerOffsets}, _From, State) ->
-    ServerOffset = -proplists:get_value(node(), ServerOffsets),
-    {Offset, _} = evaluate_time_offset(mzb_interconnect:get_director(), 200),
-    _ = ets:update_element(?MODULE, offset, {2, (Offset + ServerOffset) div 2}),
+    Director = mzb_interconnect:get_director(),
+    Offset =
+        case Director of
+            N when N == node() -> 0;
+            _ ->
+                {ServerOffset, _} = -proplists:get_value(node(), ServerOffsets),
+                {ClientOffset, _} = evaluate_time_offset(Director, 200),
+                (ServerOffset + ClientOffset) div 2
+        end,
+    _ = ets:update_element(?MODULE, offset, {2, Offset}),
     {reply, ok, State};
 handle_call(Req, _From, State) ->
     system_log:error("Unhandled call: ~p", [Req]),
