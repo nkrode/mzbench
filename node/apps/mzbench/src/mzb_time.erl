@@ -4,7 +4,7 @@
          timestamp/0,
          get_offset/0,
          update_time_offset/1,
-         get_time_offset/2]).
+         evaluate_time_offset/2]).
 
 -behaviour(gen_server).
 -export([init/1,
@@ -31,9 +31,13 @@ timestamp() ->
 
 -spec get_offset() -> integer().
 get_offset() ->
-    case ets:lookup(?MODULE, offset) of
-        [{offset, Offset}] -> Offset;
-        _ -> 0
+    case erlang:get(mzb_time_offset) of
+        undefined ->
+            Offset = ets:lookup_element(?MODULE, offset, 2),
+            erlang:put(mzb_time_offset, Offset),
+            Offset;
+        Offset ->
+            Offset
     end.
 
 -spec update_time_offset([{Node :: atom(), Offset :: integer()}]) -> ok.
@@ -50,9 +54,10 @@ init([]) ->
     {ok, #state{}}.
 
 -spec handle_call(term(), {pid(), term()}, #state{}) -> term().
-handle_call({update_time_offset, Offsets}, _From, State) ->
-    {Offset, _} = get_time_offset(mzb_interconnect:get_director(), 200),
-    _ = ets:update_element(?MODULE, offset, {2, Offset}),
+handle_call({update_time_offset, ServerOffsets}, _From, State) ->
+    ServerOffset = -proplists:get_value(node(), ServerOffsets),
+    {Offset, _} = evaluate_time_offset(mzb_interconnect:get_director(), 200),
+    _ = ets:update_element(?MODULE, offset, {2, (Offset + ServerOffset) div 2}),
     {reply, ok, State};
 handle_call(Req, _From, State) ->
     system_log:error("Unhandled call: ~p", [Req]),
@@ -76,11 +81,8 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
-
-get_time_offset(Node, SleepInterval) ->
+-spec evaluate_time_offset(Node :: atom(), SleepBetweenAttempts :: non_neg_integer()) -> {Offset :: integer(), Error :: integer()}.
+evaluate_time_offset(Node, SleepInterval) ->
     {Offset, RoundTripTime} = lists:foldl(
         fun (_Attempt, {CurOffset, MinRTT}) ->
             LocalTimestamp1 = os:timestamp(),
@@ -89,7 +91,6 @@ get_time_offset(Node, SleepInterval) ->
 
             RTT = timer:now_diff(LocalTimestamp2, LocalTimestamp1),
             Offset = timer:now_diff(DirectorTimestamp, LocalTimestamp1) - RTT div 2,
-            system_log:info("Time reconciliation between ~p and ~p, round: ~p, result: ~b(~b)", [node(), Node, _Attempt, Offset, RTT]),
             timer:sleep(SleepInterval),
             case RTT < MinRTT of
                 true -> {Offset, RTT};
@@ -99,4 +100,10 @@ get_time_offset(Node, SleepInterval) ->
 
     system_log:info("[ mzb_time ] Timestamp offset between the node ~p and ~p is ~p microseconds / error: ~p", [erlang:node(), Node, Offset, RoundTripTime div 2]),
     {Offset, RoundTripTime div 2}.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+
+
 

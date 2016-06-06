@@ -70,7 +70,7 @@ init([SuperPid, BenchName, Script, Nodes, Env, Continuation]) ->
 
     TimeOffsets = mzb_lists:pmap(
         fun (N) ->
-            {N, mzb_time:get_time_offset(N,1)}
+            {N, mzb_time:evaluate_time_offset(N, 1)}
         end, mzb_interconnect:nodes()),
 
     system_log:info("Server time offsets: ~p", [TimeOffsets]),
