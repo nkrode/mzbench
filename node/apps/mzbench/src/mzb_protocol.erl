@@ -42,6 +42,7 @@ handle(is_director_alive, _) ->
     {reply, mzb_director:is_alive()};
 
 handle({update_time_offset, Offsets}, ReplyFun) ->
+    system_log:error("update_time_offset ~p ~p", [node(), Offsets]),
     _ = spawn(fun () ->
         ReplyFun(mzb_time:update_time_offset(Offsets))
     end),

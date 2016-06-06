@@ -44,6 +44,7 @@ get_offset() ->
 
 -spec update_time_offset([{Node :: atom(), Offset :: integer()}]) -> ok.
 update_time_offset(Offsets) ->
+    system_log:error("mzb_time:system_time_offset() at ~p", [node()]),
     gen_server:call(?MODULE, {update_time_offset, Offsets}).
 
 %%%===================================================================

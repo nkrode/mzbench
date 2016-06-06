@@ -73,7 +73,7 @@ init([SuperPid, BenchName, Script, Nodes, Env, Continuation]) ->
             {N, mzb_time:evaluate_time_offset(N, 1)}
         end, mzb_interconnect:nodes()),
 
-    system_log:info("Server time offsets: ~p", [TimeOffsets]),
+    system_log:info("Director time offsets: ~p", [TimeOffsets]),
 
     {_, []} = mzb_interconnect:multi_call(Nodes, {update_time_offset, TimeOffsets}),
     {_, []} = mzb_interconnect:multi_call(Nodes, {set_signaler_nodes, Nodes}),
