@@ -59,15 +59,23 @@ init([]) ->
 -spec handle_call(term(), {pid(), term()}, #state{}) -> term().
 handle_call({update_time_offset, ServerOffsets}, _From, State) ->
     Director = mzb_interconnect:get_director(),
+    system_log:error("LINE: ~p", [?LINE]),
     Offset =
         case Director of
             N when N == node() -> 0;
             _ ->
+    system_log:error("LINE: ~p", [?LINE]),
                 {ServerOffset, _} = proplists:get_value(node(), ServerOffsets),
+    system_log:error("LINE: ~p", [?LINE]),
+                system_log:error("ServerOffset: ~p", [ServerOffset]),
+    system_log:error("LINE: ~p", [?LINE]),
                 {ClientOffset, _} = evaluate_time_offset(Director, 200),
+    system_log:error("LINE: ~p", [?LINE]),
                 (-ServerOffset + ClientOffset) div 2
         end,
+    system_log:error("LINE: ~p", [?LINE]),
     _ = ets:update_element(?MODULE, offset, {2, Offset}),
+    system_log:error("LINE: ~p", [?LINE]),
     {reply, ok, State};
 handle_call(Req, _From, State) ->
     system_log:error("Unhandled call: ~p", [Req]),
