@@ -50,6 +50,19 @@ handle({update_time_offset, Offsets}, ReplyFun) ->
 handle(get_local_timestamp, _) ->
     {reply, os:timestamp()};
 
+handle({token, From, Timestamp}, _) ->
+    R = timer:now_diff(os:timestamp(), Timestamp),
+    lager:info("Token: ~p -> ~p, latency: ~b", [From, node(), R]),
+    mzb_metrics:notify({"dummy", histogram}, erlang:abs(R)),
+    noreply;
+
+handle({normalized_token, From, Timestamp}, _) ->
+    R = timer:now_diff(mzb_time:timestamp(), Timestamp),
+    lager:info("Token: ~p -> ~p, latency: ~b", [From, node(), R]),
+    mzb_metrics:notify({"dummy", histogram}, erlang:abs(R)),
+    noreply;
+
 handle(Unhandled, _) ->
     system_log:error("Unhandled node message: ~p", [Unhandled]),
     erlang:error({unknown_message, Unhandled}).
+
