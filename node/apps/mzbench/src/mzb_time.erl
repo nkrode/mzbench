@@ -63,9 +63,9 @@ handle_call({update_time_offset, ServerOffsets}, _From, State) ->
         case Director of
             N when N == node() -> 0;
             _ ->
-                {ServerOffset, _} = -proplists:get_value(node(), ServerOffsets),
+                {ServerOffset, _} = proplists:get_value(node(), ServerOffsets),
                 {ClientOffset, _} = evaluate_time_offset(Director, 200),
-                (ServerOffset + ClientOffset) div 2
+                (-ServerOffset + ClientOffset) div 2
         end,
     _ = ets:update_element(?MODULE, offset, {2, Offset}),
     {reply, ok, State};
