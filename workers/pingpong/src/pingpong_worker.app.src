@@ -1,0 +1,13 @@
+%% -*- mode: erlang -*-
+{application, pingpong_worker,
+ [
+  {description, "Mz-bench pingpong worker"},
+  {vsn, "1.0.0"},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  lager
+                 ]},
+  {env, []}
+  %{mod, {pingpong_worker, []}}
+ ]}.
